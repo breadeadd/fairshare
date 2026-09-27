@@ -54,4 +54,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest()
                 .body(Map.of(ERROR_KEY, "Payer must be a member of the group"));
     }
+
+    @ExceptionHandler(UnsupportedCurrencyException.class)
+    public ResponseEntity<Map<String, String>> handleUnsupportedCurrency(UnsupportedCurrencyException ex) {
+            return ResponseEntity.badRequest()
+                            .body(Map.of("currency", ex.getMessage()));
+    }
 }
