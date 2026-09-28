@@ -1,47 +1,23 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { getGroup, getGroupMembers } from '../api/groups';
+import { getGroup } from '../api/groups';
 import { createExpense } from '../api/expenses';
 import { getCurrencies } from '../api/currencies';
 import ExpenseForm from '../components/ExpenseForm';
+import { today } from '../utils/dates';
+import { validateSharedExpenseFields } from '../utils/expenseValidation';
+import { useGroupMembersForm } from '../utils/useGroupMembersForm';
 import './AddExpense.css';
 
-// Built from local date because toISOString() reports the UTC date and
-// would give yesterday for the first hours of a New Zealand day.
-function today() {
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    return `${now.getFullYear()}-${month}-${day}`;
-}
-
 function validate({ amount, currency, currencies, description, paidByUserId, expenseDate, participantUserIds }) {
-    const errors = {};
-
-    if (amount.trim() === '') {
-        errors.amount = 'Amount is required';                          // AC2
-    } else if (!(Number(amount) > 0)) {
-        errors.amount = 'Amount must be a positive number';            // AC3
-    }
+    const errors = validateSharedExpenseFields({ amount, description, paidByUserId, participantUserIds });
 
     if (!currencies.some((option) => option.code === currency)) {
         errors.currency = 'Select a supported currency';               // #14 AC3
     }
 
-    if (description.trim() === '') {
-        errors.description = 'Description is required';                // AC2
-    }
-
-    if (paidByUserId === '') {
-        errors.paidByUserId = 'Payer is required';                     // AC2
-    }
-
     if (expenseDate > today()) {
         errors.expenseDate = 'Expense date cannot be in the future';   // AC6
-    }
-
-    if (!participantUserIds || participantUserIds.length === 0) {
-        errors.participantUserIds = 'At least one participant is required';   // AC4
     }
 
     return errors;
@@ -50,46 +26,42 @@ function validate({ amount, currency, currencies, description, paidByUserId, exp
 function AddExpense() {
     const { id } = useParams();
     const navigate = useNavigate();
-    const [members, setMembers] = useState([]);
+    const { members, paidByUserId, setPaidByUserId, loading, errors, setErrors } = useGroupMembersForm(id);
     const [amount, setAmount] = useState('');
     const [currency, setCurrency] = useState('');
     const [currencies, setCurrencies] = useState([]);
+    const [currenciesLoading, setCurrenciesLoading] = useState(true);
     const [description, setDescription] = useState('');
-    const [paidByUserId, setPaidByUserId] = useState('');
     const [expenseDate, setExpenseDate] = useState(today());   // AC6
-    const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
-    const [errors, setErrors] = useState({});
     const [participantUserIds, setParticipantUserIds] = useState([]);  // #8 AC3
 
+    // #14: the currency selector starts on the group's own currency.
     useEffect(() => {
-        async function load() {
-            const result = await getGroupMembers(id);
-            if (result.error) {
-                setErrors({ form: result.error });                     // AC8
-                setLoading(false);
-                return;
-            }
-            setMembers(result.members);                                // AC5
-            const self = result.members.find((member) => member.currentUser);
-            setPaidByUserId(String((self ?? result.members[0])?.userId ?? ''));
+        let active = true;
+        // A members error (e.g. not in the group) is the more useful message, so keep it.
+        const reportError = (message) => setErrors((current) => (current.form ? current : { form: message }));
 
-            // #14: the selector starts on the group's own currency.
-            const [group, currencyResult] = await Promise.all([getGroup(id), getCurrencies()]);
-            if (currencyResult.error) {
-                setErrors({ form: currencyResult.error });
-            } else {
-                setCurrencies(currencyResult.currencies);
-                setCurrency(group?.baseCurrency ?? '');
-            }
-            setLoading(false);
-        }
-
-        load().catch(() => {
-            setErrors({ form: 'Could not load group members.' });
-            setLoading(false);
-        });
-    }, [id]);
+        Promise.all([getGroup(id), getCurrencies()])
+            .then(([group, currencyResult]) => {
+                if (!active) return;
+                if (currencyResult.error) {
+                    reportError(currencyResult.error);
+                } else {
+                    setCurrencies(currencyResult.currencies);
+                    setCurrency(group?.baseCurrency ?? '');
+                }
+            })
+            .catch(() => {
+                if (active) reportError('Could not load currencies.');
+            })
+            .finally(() => {
+                if (active) setCurrenciesLoading(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, [id, setErrors]);
 
     async function handleSubmit(event) {
         event.preventDefault();
@@ -128,7 +100,7 @@ function AddExpense() {
         }
     }
 
-    if (loading) {
+    if (loading || currenciesLoading) {
         return <div className="page"><p>Loading…</p></div>;
     }
 

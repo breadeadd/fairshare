@@ -12,14 +12,15 @@ import java.util.List;
 public record ExpenseResponse(
         Long id, Long groupId, Long paidByUserId, String paidByUsername,
         BigDecimal amount, String description, LocalDate expenseDate, Instant createdAt,
-        List<Long> participantUserIds,
+        List<Long> participantUserIds, Long recurringExpenseId,
         BigDecimal originalAmount, String originalCurrency, BigDecimal exchangeRate) {
 
+    // AC3: recurringExpenseId is null for a manually recorded expense.
     public ExpenseResponse(Long id, Long groupId, Long paidByUserId, String paidByUsername,
                            BigDecimal amount, String description, LocalDate expenseDate, Instant createdAt,
                            List<Long> participantUserIds) {
         this(id, groupId, paidByUserId, paidByUsername, amount, description, expenseDate, createdAt,
-                participantUserIds, amount, null, BigDecimal.ONE);
+                participantUserIds, null, amount, null, BigDecimal.ONE);
     }
 
     public ExpenseResponse(Long id, Long groupId, Long paidByUserId, String paidByUsername,
