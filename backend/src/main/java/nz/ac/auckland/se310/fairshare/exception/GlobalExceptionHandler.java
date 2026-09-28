@@ -61,6 +61,13 @@ public class GlobalExceptionHandler {
                             .body(Map.of("currency", ex.getMessage()));
     }
 
+    // #14 AC2: 503 because the problem is a service we depend on, not the request itself.
+    @ExceptionHandler(ExchangeRateUnavailableException.class)
+    public ResponseEntity<Map<String, String>> handleExchangeRateUnavailable(ExchangeRateUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of(ERROR_KEY, ex.getMessage()));
+    }
+
     // A foreign amount too small to be worth a cent in the group's currency.
     @ExceptionHandler(InvalidExpenseAmountException.class)
     public ResponseEntity<Map<String, String>> handleInvalidExpenseAmount(InvalidExpenseAmountException ex) {

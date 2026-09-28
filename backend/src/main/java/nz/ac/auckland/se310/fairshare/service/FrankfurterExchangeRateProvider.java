@@ -1,10 +1,12 @@
 package nz.ac.auckland.se310.fairshare.service;
 
+import nz.ac.auckland.se310.fairshare.exception.ExchangeRateUnavailableException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -41,12 +43,22 @@ public class FrankfurterExchangeRateProvider implements ExchangeRateProvider {
             return BigDecimal.ONE;
         }
 
-        FrankfurterResponse response = restClient.get()
-                .uri("/{date}?from={from}&to={to}", date, from, to)
-                .retrieve()
-                .body(FrankfurterResponse.class);
+        FrankfurterResponse response;
+        try {
+            response = restClient.get()
+                    .uri("/{date}?from={from}&to={to}", date, from, to)
+                    .retrieve()
+                    .body(FrankfurterResponse.class);
+        } catch (RestClientException e) {
+            // Covers timeouts, connection failures, error statuses and unreadable responses.
+            throw new ExchangeRateUnavailableException(from, to, e); // AC2
+        }
 
-        return response.rates().get(to);
+        BigDecimal rate = response == null || response.rates() == null ? null : response.rates().get(to);
+        if (rate == null || rate.signum() <= 0) {
+            throw new ExchangeRateUnavailableException(from, to); // AC2: no rate for this pair
+        }
+        return rate;
     }
 
     private static SimpleClientHttpRequestFactory timeoutRequestFactory() {

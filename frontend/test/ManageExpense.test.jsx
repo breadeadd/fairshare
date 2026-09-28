@@ -89,6 +89,21 @@ it('#14 AC1: edits the amount and currency that were originally entered', async 
     }));
 });
 
+it('#14 AC2: an unavailable rate is reported and the edit is not left', async () => {
+    const message = 'The exchange rate from USD to NZD is unavailable right now, so the expense '
+        + 'was not saved. Try again later, or enter the expense in NZD.';
+    updateExpense.mockResolvedValue({ errors: { form: message } });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.selectOptions(await screen.findByLabelText('Currency'), 'USD');
+    await user.click(screen.getByRole('button', { name: 'Save expense' }));
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.queryByText('Flat 3')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Currency')).toHaveValue('USD');
+});
+
 it('AC3: split across a subset of members', async () => {
     const user = userEvent.setup();
     renderPage();

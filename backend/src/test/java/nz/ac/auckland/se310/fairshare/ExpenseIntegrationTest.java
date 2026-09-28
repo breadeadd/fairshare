@@ -6,6 +6,7 @@ import nz.ac.auckland.se310.fairshare.dto.CreateExpenseRequest;
 import nz.ac.auckland.se310.fairshare.dto.CreateGroupRequest;
 import nz.ac.auckland.se310.fairshare.dto.ExpenseResponse;
 import nz.ac.auckland.se310.fairshare.dto.GroupMemberResponse;
+import nz.ac.auckland.se310.fairshare.exception.ExchangeRateUnavailableException;
 import nz.ac.auckland.se310.fairshare.exception.GroupAccessDeniedException;
 import nz.ac.auckland.se310.fairshare.exception.InvalidPayerException;
 import nz.ac.auckland.se310.fairshare.exception.UnsupportedCurrencyException;
@@ -374,6 +375,45 @@ class ExpenseIntegrationTest {
         assertThatThrownBy(() -> expenseService.createExpense(groupId, request, aliceId))
                 .isInstanceOf(UnsupportedCurrencyException.class);
         assertThat(expenseRepository.count()).isZero();
+    }
+
+    @Test
+    void currency_ac2_unavailableRateRejectsTheExpenseAndSavesNothing() {
+        exchangeRates.reset(); // the rate service has nothing for USD -> NZD
+        var request = new CreateExpenseRequest(
+                new BigDecimal("20.00"), "Dinner", aliceId, memberIds, null, "USD");
+
+        assertThatThrownBy(() -> expenseService.createExpense(groupId, request, aliceId))
+                .isInstanceOf(ExchangeRateUnavailableException.class)
+                .hasMessageContaining("from USD to NZD is unavailable");
+
+        assertThat(expenseRepository.count()).isZero();
+        assertThat(expenseShareRepository.count()).isZero();
+        assertThat(balances()).containsOnly(
+                Map.entry(aliceId, new BigDecimal("0.00")),
+                Map.entry(bobId, new BigDecimal("0.00")));
+    }
+
+    @Test
+    void currency_ac2_unavailableRateLeavesAnEditedExpenseUnchanged() {
+        ExpenseResponse created = expenseService.createExpense(groupId, new CreateExpenseRequest(
+                new BigDecimal("20.00"), "Dinner", aliceId, memberIds, null, "USD"), aliceId);
+        Map<Long, BigDecimal> balancesBefore = balances();
+
+        exchangeRates.reset();
+        var update = new CreateExpenseRequest(
+                new BigDecimal("50.00"), "Dinner and drinks", bobId, memberIds, null, "EUR");
+        Long expenseId = created.id();
+
+        assertThatThrownBy(() -> expenseService.updateExpense(groupId, update, aliceId, expenseId))
+                .isInstanceOf(ExchangeRateUnavailableException.class);
+
+        ExpenseResponse unchanged = expenseService.getExpense(groupId, expenseId, aliceId);
+        assertThat(unchanged.description()).isEqualTo("Dinner");
+        assertThat(unchanged.paidByUserId()).isEqualTo(aliceId);
+        assertThat(unchanged.originalCurrency()).isEqualTo("USD");
+        assertThat(unchanged.amount()).isEqualByComparingTo("34.11");
+        assertThat(balances()).isEqualTo(balancesBefore);
     }
 
     private Map<Long, BigDecimal> balances() {

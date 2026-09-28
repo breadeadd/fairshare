@@ -9,5 +9,9 @@ import java.time.LocalDate;
  */
 public interface ExchangeRateProvider {
 
+    /**
+     * @throws nz.ac.auckland.se310.fairshare.exception.ExchangeRateUnavailableException when no
+     *         rate can be found, whether the service failed or has no rate for the pair (AC2)
+     */
     BigDecimal getRate(String from, String to, LocalDate date);
 }

@@ -218,6 +218,35 @@ it('#14: shows the server error under the currency selector', async () => {
     expect(await screen.findByText('Unsupported currency code: USD')).toBeInTheDocument();
 });
 
+it('#14 AC2: an unavailable rate is reported and the form is kept for another try', async () => {
+    const message = 'The exchange rate from USD to NZD is unavailable right now, so the expense '
+        + 'was not saved. Try again later, or enter the expense in NZD.';
+    createExpense.mockResolvedValue({ errors: { form: message } });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(await screen.findByLabelText('Amount'), '20');
+    await user.selectOptions(screen.getByLabelText('Currency'), 'USD');
+    await user.type(screen.getByLabelText('Description'), 'Dinner');
+    await user.click(screen.getByRole('checkbox', { name: 'alice' }));
+    await user.click(screen.getByRole('button', { name: 'Save expense' }));
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.queryByText('Flat 3')).not.toBeInTheDocument();   // stayed on the form
+    expect(screen.getByLabelText('Amount')).toHaveValue(20);
+    expect(screen.getByLabelText('Currency')).toHaveValue('USD');
+    expect(screen.getByLabelText('Description')).toHaveValue('Dinner');
+    expect(screen.getByRole('button', { name: 'Save expense' })).toBeEnabled();
+
+    // Switching to the group currency needs no rate, so the retry goes through.
+    createExpense.mockResolvedValue({ expense: { id: 9 } });
+    await user.selectOptions(screen.getByLabelText('Currency'), 'NZD');
+    await user.click(screen.getByRole('button', { name: 'Save expense' }));
+
+    expect(await screen.findByText('Flat 3')).toBeInTheDocument();
+    expect(createExpense).toHaveBeenLastCalledWith('1', expect.objectContaining({ currency: 'NZD' }));
+});
+
 it('#14: reports when the currency list cannot be loaded', async () => {
     getCurrencies.mockResolvedValue({ error: 'Could not load currencies.' });
 

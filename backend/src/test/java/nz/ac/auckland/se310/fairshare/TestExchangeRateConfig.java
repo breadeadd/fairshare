@@ -1,5 +1,6 @@
 package nz.ac.auckland.se310.fairshare;
 
+import nz.ac.auckland.se310.fairshare.exception.ExchangeRateUnavailableException;
 import nz.ac.auckland.se310.fairshare.service.ExchangeRateProvider;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -32,7 +33,8 @@ public class TestExchangeRateConfig {
             }
             BigDecimal rate = rates.get(from + "->" + to);
             if (rate == null) {
-                throw new IllegalStateException("No stub rate set for " + from + "->" + to);
+                // Behaves like the real provider when the service is down or lacks the pair.
+                throw new ExchangeRateUnavailableException(from, to);
             }
             return rate;
         }
