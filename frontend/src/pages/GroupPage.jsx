@@ -3,6 +3,7 @@ import {Link, useParams} from 'react-router-dom';
 import {getGroup, getGroupMembers} from '../api/groups';
 import {getExpenses} from '../api/expenses';
 import SettlementView from './SettlementView';
+import {formatExpenseAmount} from '../utils/formatExpenseAmount';
 import './GroupPage.css';
 
 // Formats a numeric balance into the UI's currency display and keeps the sign readable.
@@ -120,7 +121,7 @@ function GroupPage() {
                                         {expense.paidByUsername} paid on {expense.expenseDate}
                                     </span>
                                     <span className="expense-amount">
-                                        {money(group.baseCurrency, expense.amount)}
+                                        {formatExpenseAmount(expense, group.baseCurrency)}
                                     </span>
                                 </li>
                             ))}

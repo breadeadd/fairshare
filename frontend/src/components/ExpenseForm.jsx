@@ -1,5 +1,7 @@
 function ExpenseForm({
     amount,
+    currency,
+    currencies,
     description,
     paidByUserId,
     expenseDate,
@@ -8,6 +10,7 @@ function ExpenseForm({
     errors,
     submitting,
     onAmountChange,
+    onCurrencyChange,
     onDescriptionChange,
     onPaidByUserIdChange,
     onExpenseDateChange,
@@ -37,6 +40,23 @@ function ExpenseForm({
                     onChange={(event) => onAmountChange(event.target.value)}
                 />
                 {errors.amount && <span className="error">{errors.amount}</span>}
+            </div>
+
+            {/* #14 AC1, AC3: only supported ISO 4217 codes can be picked */}
+            <div className="form-group">
+                <label htmlFor="currency">Currency</label>
+                <select
+                    id="currency"
+                    value={currency}
+                    onChange={(event) => onCurrencyChange(event.target.value)}
+                >
+                    {currencies.map((option) => (
+                        <option key={option.code} value={option.code}>
+                            {option.code} — {option.name}
+                        </option>
+                    ))}
+                </select>
+                {errors.currency && <span className="error">{errors.currency}</span>}
             </div>
 
             <div className="form-group">

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { getGroupMembers } from '../api/groups';
+import { getGroup, getGroupMembers } from '../api/groups';
 import { createExpense } from '../api/expenses';
+import { getCurrencies } from '../api/currencies';
 import ExpenseForm from '../components/ExpenseForm';
 import './AddExpense.css';
 
@@ -14,13 +15,17 @@ function today() {
     return `${now.getFullYear()}-${month}-${day}`;
 }
 
-function validate({ amount, description, paidByUserId, expenseDate, participantUserIds }) {
+function validate({ amount, currency, currencies, description, paidByUserId, expenseDate, participantUserIds }) {
     const errors = {};
 
     if (amount.trim() === '') {
         errors.amount = 'Amount is required';                          // AC2
     } else if (!(Number(amount) > 0)) {
         errors.amount = 'Amount must be a positive number';            // AC3
+    }
+
+    if (!currencies.some((option) => option.code === currency)) {
+        errors.currency = 'Select a supported currency';               // #14 AC3
     }
 
     if (description.trim() === '') {
@@ -47,6 +52,8 @@ function AddExpense() {
     const navigate = useNavigate();
     const [members, setMembers] = useState([]);
     const [amount, setAmount] = useState('');
+    const [currency, setCurrency] = useState('');
+    const [currencies, setCurrencies] = useState([]);
     const [description, setDescription] = useState('');
     const [paidByUserId, setPaidByUserId] = useState('');
     const [expenseDate, setExpenseDate] = useState(today());   // AC6
@@ -56,19 +63,29 @@ function AddExpense() {
     const [participantUserIds, setParticipantUserIds] = useState([]);  // #8 AC3
 
     useEffect(() => {
-        async function loadMembers() {
+        async function load() {
             const result = await getGroupMembers(id);
             if (result.error) {
                 setErrors({ form: result.error });                     // AC8
+                setLoading(false);
+                return;
+            }
+            setMembers(result.members);                                // AC5
+            const self = result.members.find((member) => member.currentUser);
+            setPaidByUserId(String((self ?? result.members[0])?.userId ?? ''));
+
+            // #14: the selector starts on the group's own currency.
+            const [group, currencyResult] = await Promise.all([getGroup(id), getCurrencies()]);
+            if (currencyResult.error) {
+                setErrors({ form: currencyResult.error });
             } else {
-                setMembers(result.members);                            // AC5
-                const self = result.members.find((member) => member.currentUser);
-                setPaidByUserId(String((self ?? result.members[0])?.userId ?? ''));
+                setCurrencies(currencyResult.currencies);
+                setCurrency(group?.baseCurrency ?? '');
             }
             setLoading(false);
         }
 
-        loadMembers().catch(() => {
+        load().catch(() => {
             setErrors({ form: 'Could not load group members.' });
             setLoading(false);
         });
@@ -77,7 +94,9 @@ function AddExpense() {
     async function handleSubmit(event) {
         event.preventDefault();
 
-        const found = validate({ amount, description, paidByUserId, expenseDate, participantUserIds });
+        const found = validate({
+            amount, currency, currencies, description, paidByUserId, expenseDate, participantUserIds
+        });
         if (Object.keys(found).length > 0) {
             setErrors(found);
             return;
@@ -89,6 +108,7 @@ function AddExpense() {
         try {
             const result = await createExpense(id, {
                 amount,
+                currency,
                 description,
                 paidByUserId: Number(paidByUserId),
                 expenseDate,
@@ -120,6 +140,8 @@ function AddExpense() {
 
                 <ExpenseForm
                     amount={amount}
+                    currency={currency}
+                    currencies={currencies}
                     description={description}
                     paidByUserId={paidByUserId}
                     expenseDate={expenseDate}
@@ -128,6 +150,7 @@ function AddExpense() {
                     errors={errors}
                     submitting={submitting}
                     onAmountChange={setAmount}
+                    onCurrencyChange={setCurrency}
                     onDescriptionChange={setDescription}
                     onPaidByUserIdChange={setPaidByUserId}
                     onExpenseDateChange={setExpenseDate}
