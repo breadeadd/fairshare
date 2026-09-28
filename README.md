@@ -13,6 +13,8 @@ The following works today:
 - Create a group and see the groups you belong to
 - Add members by email or username, remove members and leave a group
 - Record an expense with an amount, description, payer, date and the members it applies to
+- Record an expense in any of 23 supported currencies. It is converted into the group's currency at the rate for the expense date, and the history shows both, e.g. `USD 20.00 (≈ NZD 34.11)`
+- Choose any supported currency as your home currency, which becomes the currency of groups you create
 - Split an expense equally across the selected members, accurate to the cent
 - Browse a group's expense history and edit an existing expense
 - See each member's balance, and the transactions behind a single member's balance
@@ -24,7 +26,7 @@ The following is not built yet:
 - Exporting group data. Data is stored in MySQL and survives a restart, but nothing produces a download. See [issue #12](https://github.com/se310-fairshare/fairshare/issues/12).
 - Splitting by percentage, shares or exact amounts. Only the equal split exists.
 
-Work planned for the next iteration is tracked in the open issues, including individual debt tracking ([#2](https://github.com/se310-fairshare/fairshare/issues/2)), receipt scanning ([#5](https://github.com/se310-fairshare/fairshare/issues/5)), recurring expenses ([#13](https://github.com/se310-fairshare/fairshare/issues/13)), multi-currency support ([#14](https://github.com/se310-fairshare/fairshare/issues/14)), payment reminders ([#15](https://github.com/se310-fairshare/fairshare/issues/15)) and spending charts ([#16](https://github.com/se310-fairshare/fairshare/issues/16)).
+Work planned for the next iteration is tracked in the open issues, including individual debt tracking ([#2](https://github.com/se310-fairshare/fairshare/issues/2)), receipt scanning ([#5](https://github.com/se310-fairshare/fairshare/issues/5)), recurring expenses ([#13](https://github.com/se310-fairshare/fairshare/issues/13)), payment reminders ([#15](https://github.com/se310-fairshare/fairshare/issues/15)) and spending charts ([#16](https://github.com/se310-fairshare/fairshare/issues/16)).
 
 ## Technology stack
 
@@ -106,6 +108,7 @@ The app is then at `http://localhost:5173`. Open it and register an account to g
 - **The backend has to be on port 8080.** The frontend has that address built in, at `frontend/src/api/config.js`.
 - **`http://localhost:8080/` returns 401 in a browser.** There is no route at the root, and everything except registering and logging in needs a session, so an unauthenticated request there is rejected before the missing route is reached. With a session it returns 404. Either way the backend has started.
 - **A fresh database has no accounts in it.** Register through the app.
+- **Foreign-currency expenses need internet access.** Exchange rates come from the free [Frankfurter API](https://frankfurter.dev), which publishes European Central Bank reference rates and needs no key. If it cannot be reached, an expense in another currency is rejected with an explanation and nothing is saved. Expenses in the group's own currency never call it. The address is set by `fairshare.exchange-rate.base-url` in `application.properties`.
 
 ## Running the tests
 
@@ -160,7 +163,7 @@ Inside the frontend:
 src/api/          Backend calls and the shared fetch wrapper
 src/pages/        One file per screen
 src/components/   Shared components
-src/utils/        Validation helpers
+src/utils/        Validation and formatting helpers
 test/             Vitest specs
 ```
 
@@ -168,7 +171,7 @@ Frontend tests live in `frontend/test` rather than beside the source. `UserProfi
 
 ## API
 
-All responses are JSON, and every route except registering and logging in needs an authenticated session.
+All responses are JSON, and every route except registering, logging in and listing currencies needs an authenticated session.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -190,6 +193,7 @@ All responses are JSON, and every route except registering and logging in needs 
 | GET | `/groups/{groupId}/expenses` | A group's expense history |
 | GET | `/groups/{groupId}/expenses/{expenseId}` | One expense |
 | PUT | `/groups/{groupId}/expenses/{expenseId}` | Edit an expense |
+| GET | `/currencies` | Supported currencies with their ISO 4217 codes |
 
 ## Contributing
 
