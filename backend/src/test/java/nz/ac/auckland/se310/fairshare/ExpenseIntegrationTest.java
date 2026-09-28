@@ -6,6 +6,8 @@ import nz.ac.auckland.se310.fairshare.dto.CreateExpenseRequest;
 import nz.ac.auckland.se310.fairshare.dto.CreateGroupRequest;
 import nz.ac.auckland.se310.fairshare.dto.ExpenseResponse;
 import nz.ac.auckland.se310.fairshare.dto.GroupMemberResponse;
+import nz.ac.auckland.se310.fairshare.dto.SettlementLine;
+import nz.ac.auckland.se310.fairshare.dto.SettlementRequest;
 import nz.ac.auckland.se310.fairshare.exception.ExchangeRateUnavailableException;
 import nz.ac.auckland.se310.fairshare.exception.GroupAccessDeniedException;
 import nz.ac.auckland.se310.fairshare.exception.InvalidPayerException;
@@ -14,6 +16,7 @@ import nz.ac.auckland.se310.fairshare.model.User;
 import nz.ac.auckland.se310.fairshare.repository.ExpenseGroupRepository;
 import nz.ac.auckland.se310.fairshare.repository.ExpenseRepository;
 import nz.ac.auckland.se310.fairshare.repository.ExpenseShareRepository;
+import nz.ac.auckland.se310.fairshare.repository.SettlementRepository;
 import nz.ac.auckland.se310.fairshare.service.ExpenseGroupService;
 import nz.ac.auckland.se310.fairshare.service.ExpenseService;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,6 +61,7 @@ class ExpenseIntegrationTest {
     @Autowired ExpenseGroupRepository groupRepository;
     @Autowired ExpenseRepository expenseRepository;
     @Autowired ExpenseShareRepository expenseShareRepository;
+    @Autowired SettlementRepository settlementRepository;
     @Autowired UserRepository userRepository;
     @Autowired Validator validator;
     @Autowired TestExchangeRateConfig.StubExchangeRateProvider exchangeRates;
@@ -72,6 +76,7 @@ class ExpenseIntegrationTest {
     void setUp() {
         expenseShareRepository.deleteAll();
         expenseRepository.deleteAll();
+        settlementRepository.deleteAll();
         groupRepository.deleteAll();
 
         aliceId = userRepository.findByEmail("alice@test.com").orElseThrow().getId();
@@ -139,6 +144,37 @@ class ExpenseIntegrationTest {
         assertThat(violations(new CreateExpenseRequest(new BigDecimal("0.004"), "Taxi", aliceId, memberIds, null)))
                 .extractingByKey(AMOUNT_FIELD, list(String.class))
                 .containsExactly("Amount must be at least 0.01");
+    }
+
+    @Test
+    void rejectsAmountsTooLargeToStore() {
+        // expense.original_amount is DECIMAL(15,2), so larger amounts would fail with a 500.
+        assertThat(violations(new CreateExpenseRequest(new BigDecimal("10000000000000.00"), "Taxi", aliceId, memberIds, null)))
+                .extractingByKey(AMOUNT_FIELD, list(String.class))
+                .containsExactly("Amount must be at most 9,999,999,999,999.99");
+
+        assertThat(violations(new CreateExpenseRequest(new BigDecimal("9999999999999.99"), "Taxi", aliceId, memberIds, null)))
+                .isEmpty();
+    }
+
+    @Test
+    void amountsAboveTheOldDecimal10LimitAreStored() {
+        // Review of #75: 135,000,000 did not fit the old DECIMAL(10,2) columns.
+        exchangeRates.setRate("USD", "NZD", "1350");
+        var request = new CreateExpenseRequest(
+                new BigDecimal("100000.00"), "Car", aliceId, memberIds, null, "USD");
+
+        ExpenseResponse created = expenseService.createExpense(groupId, request, aliceId);
+
+        assertThat(expenseService.getExpense(groupId, created.id(), aliceId).amount())
+                .isEqualByComparingTo("135000000.00");
+        assertThat(balances()).containsOnly(
+                Map.entry(aliceId, new BigDecimal("-67500000.00")),
+                Map.entry(bobId, new BigDecimal("67500000.00")));
+        // Settling up stores the same size of amount in the settlement table.
+        assertThat(groupService.computeSettlement(groupId, aliceId, new SettlementRequest(List.of())))
+                .extracting(SettlementLine::amount)
+                .containsExactly(new BigDecimal("67500000.00"));
     }
 
     @Test

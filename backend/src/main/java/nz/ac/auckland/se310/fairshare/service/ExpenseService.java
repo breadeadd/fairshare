@@ -28,6 +28,8 @@ public class ExpenseService {
 
     private static final int MONEY_SCALE = 2;
     private static final int RATE_SCALE = 8; // matches expense.exchange_rate DECIMAL(18,8)
+    // The largest value expense.amount, a DECIMAL(15,2), can hold.
+    private static final BigDecimal MAX_AMOUNT = new BigDecimal("9999999999999.99");
 
     private final ExpenseRepository expenseRepository;
     private final ExpenseGroupRepository groupRepository;
@@ -239,6 +241,12 @@ public class ExpenseService {
         if (amount.signum() <= 0) {
             throw new InvalidExpenseAmountException(
                     "Amount is less than 0.01 " + baseCurrency + " once converted");
+        }
+        // Converting into a currency like IDR multiplies the amount, so it can pass the column
+        // limit even when the entered amount did not. A 400 rather than a failed save.
+        if (amount.compareTo(MAX_AMOUNT) > 0) {
+            throw new InvalidExpenseAmountException(
+                    "Amount is more than 9,999,999,999,999.99 " + baseCurrency + " once converted");
         }
         return new Conversion(originalAmount, currency, rate, amount);
     }

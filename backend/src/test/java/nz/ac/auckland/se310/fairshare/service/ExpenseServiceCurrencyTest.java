@@ -139,6 +139,37 @@ class ExpenseServiceCurrencyTest {
         verify(expenseRepository, never()).save(any());
     }
 
+    @Test
+    void largeForeignAmountSavesOnceConverted() {
+        // Review of #75: USD 100,000 is KRW 135,000,000, which used to fail with a 500.
+        ExpenseResponse created = krwGroupService().createExpense(GROUP_ID, request("100000.00", "USD"), ALICE);
+
+        assertThat(created.amount()).isEqualByComparingTo("135000000.00");
+        assertThat(created.originalAmount()).isEqualByComparingTo("100000.00");
+    }
+
+    @Test
+    void convertedAmountTooLargeToStoreIsRejectedBeforeAnythingIsSaved() {
+        // USD 9,000,000,000 x 1,350 = KRW 12,150,000,000,000, over the DECIMAL(15,2) limit.
+        ExpenseService krwGroup = krwGroupService();
+        CreateExpenseRequest request = request("9000000000.00", "USD");
+
+        assertThatThrownBy(() -> krwGroup.createExpense(GROUP_ID, request, ALICE))
+                .isInstanceOf(InvalidExpenseAmountException.class)
+                .hasMessage("Amount is more than 9,999,999,999,999.99 KRW once converted");
+        verify(expenseRepository, never()).save(any());
+        verify(expenseShareRepository, never()).save(any());
+    }
+
+    /** A KRW group where 1 USD = 1,350 KRW. */
+    private ExpenseService krwGroupService() {
+        ExpenseGroup krwGroup = new ExpenseGroup("Seoul trip", null, User.Currency.KRW, group.getMember(ALICE).getUser());
+        krwGroup.addMember(group.getMember(BOB).getUser());
+        when(groupRepository.findByIdAndMembersUserId(GROUP_ID, ALICE)).thenReturn(Optional.of(krwGroup));
+        return new ExpenseService(expenseRepository, groupRepository, expenseShareRepository,
+                new CurrencyService(), (from, to, date) -> from.equals(to) ? BigDecimal.ONE : new BigDecimal("1350"));
+    }
+
     private CreateExpenseRequest request(String amount, String currency) {
         return new CreateExpenseRequest(
                 new BigDecimal(amount), "Petrol", ALICE, List.of(ALICE, BOB), EXPENSE_DATE, currency);

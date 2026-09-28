@@ -25,11 +25,11 @@ public class Expense {
     @JoinColumn(name = "paid_by", nullable = false)
     private User paidBy;
 
-    @Column(name = "amount", nullable = false, precision = 10, scale = 2)
+    @Column(name = "amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal amount;
 
     // #14 AC1: what the member entered, before conversion into the group's base currency.
-    @Column(name = "original_amount", nullable = false, precision = 10, scale = 2)
+    @Column(name = "original_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal originalAmount;
 
     @JdbcTypeCode(SqlTypes.CHAR)
