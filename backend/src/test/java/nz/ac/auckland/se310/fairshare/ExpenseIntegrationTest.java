@@ -8,6 +8,7 @@ import nz.ac.auckland.se310.fairshare.dto.ExpenseResponse;
 import nz.ac.auckland.se310.fairshare.dto.GroupMemberResponse;
 import nz.ac.auckland.se310.fairshare.exception.GroupAccessDeniedException;
 import nz.ac.auckland.se310.fairshare.exception.InvalidPayerException;
+import nz.ac.auckland.se310.fairshare.exception.UnsupportedCurrencyException;
 import nz.ac.auckland.se310.fairshare.model.User;
 import nz.ac.auckland.se310.fairshare.repository.ExpenseGroupRepository;
 import nz.ac.auckland.se310.fairshare.repository.ExpenseRepository;
@@ -38,7 +39,7 @@ import static org.assertj.core.api.InstanceOfAssertFactories.list;
 
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
-@Import(TestCurrentUserConfig.class)
+@Import({TestCurrentUserConfig.class, TestExchangeRateConfig.class})
 class ExpenseIntegrationTest {
 
     @Container
@@ -58,6 +59,7 @@ class ExpenseIntegrationTest {
     @Autowired ExpenseShareRepository expenseShareRepository;
     @Autowired UserRepository userRepository;
     @Autowired Validator validator;
+    @Autowired TestExchangeRateConfig.StubExchangeRateProvider exchangeRates;
 
     private Long aliceId;
     private Long bobId;
@@ -81,6 +83,10 @@ class ExpenseIntegrationTest {
 
         groupId = groupService.createGroup(new CreateGroupRequest("Flat 3", null), aliceId).id();
         groupService.addMember(groupId, "bob@test.com", aliceId);
+
+        exchangeRates.reset();
+        exchangeRates.setRate("USD", "NZD", "1.7056");
+        exchangeRates.setRate("EUR", "NZD", "1.9500");
     }
 
     @Test
@@ -298,6 +304,76 @@ class ExpenseIntegrationTest {
                 Map.entry(aliceId, new BigDecimal("-45.00")),
                 Map.entry(bobId, new BigDecimal("45.00")),
                 Map.entry(carolId, new BigDecimal("0.00")));
+    }
+
+    // Issue #14 tests:
+
+    @Test
+    void currency_ac1_foreignExpenseIsStoredWithOriginalAmountAndCurrency() {
+        var request = new CreateExpenseRequest(
+                new BigDecimal("20.00"), "Dinner", aliceId, memberIds, LocalDate.of(2026, Month.AUGUST, 1), "USD");
+
+        ExpenseResponse created = expenseService.createExpense(groupId, request, aliceId);
+
+        // Read back from the database, as the expense history does.
+        ExpenseResponse stored = expenseService.getExpense(groupId, created.id(), bobId);
+        assertThat(stored.originalAmount()).isEqualByComparingTo("20.00");
+        assertThat(stored.originalCurrency()).isEqualTo("USD");
+        assertThat(stored.exchangeRate()).isEqualByComparingTo("1.7056");
+        assertThat(stored.amount()).isEqualByComparingTo("34.11");
+        assertThat(expenseService.getExpensesForGroup(groupId, bobId))
+                .extracting(ExpenseResponse::originalCurrency)
+                .containsExactly("USD");
+    }
+
+    @Test
+    void currency_ac1_balancesAreInTheGroupBaseCurrency() {
+        var request = new CreateExpenseRequest(
+                new BigDecimal("20.00"), "Dinner", aliceId, memberIds, null, "USD");
+
+        expenseService.createExpense(groupId, request, aliceId);
+
+        // NZD 34.11 split two ways; the extra cent goes to the lowest user id (alice).
+        assertThat(balances()).containsOnly(
+                Map.entry(aliceId, new BigDecimal("-17.05")),
+                Map.entry(bobId, new BigDecimal("17.05")));
+    }
+
+    @Test
+    void currency_ac1_existingClientsWithoutACurrencyUseTheGroupBaseCurrency() {
+        var request = new CreateExpenseRequest(new BigDecimal(TAXI_AMOUNT), "Taxi", aliceId, memberIds, null);
+
+        ExpenseResponse created = expenseService.createExpense(groupId, request, aliceId);
+
+        assertThat(created.originalCurrency()).isEqualTo("NZD");
+        assertThat(created.exchangeRate()).isEqualByComparingTo("1");
+        assertThat(created.amount()).isEqualByComparingTo(TAXI_AMOUNT);
+    }
+
+    @Test
+    void currency_ac1_editingTheCurrencyReconvertsAndRebalances() {
+        ExpenseResponse created = expenseService.createExpense(groupId, new CreateExpenseRequest(
+                new BigDecimal("20.00"), "Dinner", aliceId, memberIds, null, "USD"), aliceId);
+
+        expenseService.updateExpense(groupId, new CreateExpenseRequest(
+                new BigDecimal("20.00"), "Dinner", aliceId, memberIds, null, "EUR"), aliceId, created.id());
+
+        ExpenseResponse updated = expenseService.getExpense(groupId, created.id(), aliceId);
+        assertThat(updated.originalCurrency()).isEqualTo("EUR");
+        assertThat(updated.amount()).isEqualByComparingTo("39.00");
+        assertThat(balances()).containsOnly(
+                Map.entry(aliceId, new BigDecimal("-19.50")),
+                Map.entry(bobId, new BigDecimal("19.50")));
+    }
+
+    @Test
+    void currency_ac3_unsupportedCurrencyIsRejected() {
+        var request = new CreateExpenseRequest(
+                new BigDecimal(TAXI_AMOUNT), "Taxi", aliceId, memberIds, null, "XYZ");
+
+        assertThatThrownBy(() -> expenseService.createExpense(groupId, request, aliceId))
+                .isInstanceOf(UnsupportedCurrencyException.class);
+        assertThat(expenseRepository.count()).isZero();
     }
 
     private Map<Long, BigDecimal> balances() {

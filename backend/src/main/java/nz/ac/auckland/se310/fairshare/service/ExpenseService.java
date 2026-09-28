@@ -4,6 +4,7 @@ import nz.ac.auckland.se310.fairshare.dto.CreateExpenseRequest;
 import nz.ac.auckland.se310.fairshare.dto.ExpenseResponse;
 import nz.ac.auckland.se310.fairshare.exception.GroupAccessDeniedException;
 import nz.ac.auckland.se310.fairshare.exception.ExpenseNotFoundException;
+import nz.ac.auckland.se310.fairshare.exception.InvalidExpenseAmountException;
 import nz.ac.auckland.se310.fairshare.exception.InvalidPayerException;
 import nz.ac.auckland.se310.fairshare.model.Expense;
 import nz.ac.auckland.se310.fairshare.model.ExpenseGroup;
@@ -25,17 +26,27 @@ import java.util.List;
 public class ExpenseService {
 
     private static final int MONEY_SCALE = 2;
+    private static final int RATE_SCALE = 8; // matches expense.exchange_rate DECIMAL(18,8)
 
     private final ExpenseRepository expenseRepository;
     private final ExpenseGroupRepository groupRepository;
     private final ExpenseShareRepository expenseShareRepository;
+    private final CurrencyService currencyService;
+    private final ExchangeRateProvider exchangeRateProvider;
 
-
-    public ExpenseService(ExpenseRepository expenseRepository, ExpenseGroupRepository groupRepository, ExpenseShareRepository expenseShareRepository) {
+    public ExpenseService(ExpenseRepository expenseRepository, ExpenseGroupRepository groupRepository,
+                          ExpenseShareRepository expenseShareRepository, CurrencyService currencyService,
+                          ExchangeRateProvider exchangeRateProvider) {
         this.expenseRepository = expenseRepository;
         this.groupRepository = groupRepository;
         this.expenseShareRepository = expenseShareRepository;
+        this.currencyService = currencyService;
+        this.exchangeRateProvider = exchangeRateProvider;
     }
+
+    /** The amount as entered, and its value in the group's base currency. */
+    private record Conversion(BigDecimal originalAmount, String originalCurrency,
+                              BigDecimal exchangeRate, BigDecimal amount) {}
 
     /**
      * Validates that the current user belongs to the group, confirms the payer is a member, and then
@@ -61,14 +72,17 @@ public class ExpenseService {
             throw new IllegalStateException("No valid participants found in the group for the expense");
         }
 
-        BigDecimal amount = request.amount().setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         LocalDate expenseDate = request.expenseDate() != null ? request.expenseDate() : LocalDate.now(); // AC6
+        // Converted before anything is saved, so a failed rate lookup leaves no partial expense behind.
+        Conversion conversion = convert(group, request, expenseDate);
 
         Expense expense = new Expense(
-                group, payer.getUser(), amount, request.description().trim(), expenseDate);
+                group, payer.getUser(), conversion.amount(), request.description().trim(), expenseDate);
+        expense.setConversion(conversion.originalAmount(), conversion.originalCurrency(),
+                conversion.exchangeRate(), conversion.amount());
         Expense saved = expenseRepository.save(expense);
 
-        applyEqualSplit(payer, amount, members, saved); // AC1, AC4
+        applyEqualSplit(payer, conversion.amount(), members, saved); // AC1, AC4
 
         return toResponse(saved);
     }
@@ -102,16 +116,17 @@ public class ExpenseService {
             throw new IllegalStateException("No valid participants found in the group for the expense");
         }
 
-        BigDecimal amount = request.amount().setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        LocalDate expenseDate = request.expenseDate() != null ? request.expenseDate() : expense.getExpenseDate();
+        Conversion conversion = convert(group, request, expenseDate);
 
-        updateSplit(expense, originalPayer, payer, amount, members);
+        // updateSplit reverses the old amount, so the new one is only set on the expense afterwards.
+        updateSplit(expense, originalPayer, payer, conversion.amount(), members);
 
-        expense.setAmount(amount);
+        expense.setConversion(conversion.originalAmount(), conversion.originalCurrency(),
+                conversion.exchangeRate(), conversion.amount());
         expense.setDescription(request.description().trim());
         expense.setPaidBy(payer.getUser());
-        if (request.expenseDate() != null) {
-            expense.setExpenseDate(request.expenseDate());
-        }
+        expense.setExpenseDate(expenseDate);
 
         expenseRepository.save(expense);
     }
@@ -185,6 +200,29 @@ public class ExpenseService {
         applyEqualSplit(newPayer, newAmount, members, expense);
     }
 
+    /**
+     * #14 AC1: converts the entered amount into the group's base currency using the rate for the
+     * expense date. A request with no currency is taken to be in the base currency.
+     */
+    private Conversion convert(ExpenseGroup group, CreateExpenseRequest request, LocalDate expenseDate) {
+        String baseCurrency = group.getBaseCurrency().name();
+        String currency = request.currency() == null
+                ? baseCurrency
+                : currencyService.requireSupported(request.currency()); // AC3
+
+        BigDecimal originalAmount = request.amount().setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal rate = exchangeRateProvider.getRate(currency, baseCurrency, expenseDate)
+                .setScale(RATE_SCALE, RoundingMode.HALF_UP);
+        BigDecimal amount = originalAmount.multiply(rate).setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+
+        // e.g. IDR 10 is worth well under one cent in NZD, which cannot be split or settled.
+        if (amount.signum() <= 0) {
+            throw new InvalidExpenseAmountException(
+                    "Amount is less than 0.01 " + baseCurrency + " once converted");
+        }
+        return new Conversion(originalAmount, currency, rate, amount);
+    }
+
     private BigDecimal cents(long value) {
         return BigDecimal.valueOf(value, MONEY_SCALE);
     }
@@ -202,6 +240,9 @@ public class ExpenseService {
                 expenseShareRepository.findByExpenseId(expense.getId()).stream()
                     .map(share -> share.getUser().getId())
                     .sorted()
-                    .toList());
+                    .toList(),
+                expense.getOriginalAmount(),
+                expense.getOriginalCurrency(),
+                expense.getExchangeRate());
     }
 }

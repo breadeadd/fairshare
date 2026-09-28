@@ -29,4 +29,14 @@ public record CreateExpenseRequest(
         List<Long> participantUserIds,
 
         @PastOrPresent(message = "Expense date cannot be in the future")
-        LocalDate expenseDate) {}
+        LocalDate expenseDate,
+
+        // #14 AC1: ISO 4217 code the amount was entered in. Left out, it defaults to the group's
+        // base currency. Checked against the supported list by CurrencyService (AC3).
+        String currency) {
+
+    public CreateExpenseRequest(BigDecimal amount, String description, Long paidByUserId,
+                                List<Long> participantUserIds, LocalDate expenseDate) {
+        this(amount, description, paidByUserId, participantUserIds, expenseDate, null);
+    }
+}

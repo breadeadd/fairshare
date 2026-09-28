@@ -60,4 +60,11 @@ public class GlobalExceptionHandler {
             return ResponseEntity.badRequest()
                             .body(Map.of("currency", ex.getMessage()));
     }
+
+    // A foreign amount too small to be worth a cent in the group's currency.
+    @ExceptionHandler(InvalidExpenseAmountException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidExpenseAmount(InvalidExpenseAmountException ex) {
+        return ResponseEntity.badRequest()
+                .body(Map.of("amount", ex.getMessage()));
+    }
 }
