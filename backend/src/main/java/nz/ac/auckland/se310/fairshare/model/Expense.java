@@ -1,6 +1,8 @@
 package nz.ac.auckland.se310.fairshare.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -26,6 +28,18 @@ public class Expense {
     @Column(name = "amount", nullable = false, precision = 10, scale = 2)
     private BigDecimal amount;
 
+    // #14 AC1: what the member entered, before conversion into the group's base currency.
+    @Column(name = "original_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal originalAmount;
+
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "original_currency", nullable = false, length = 3)
+    private String originalCurrency;
+
+    // Base-currency units per one unit of originalCurrency; 1 when no conversion was needed.
+    @Column(name = "exchange_rate", nullable = false, precision = 18, scale = 8)
+    private BigDecimal exchangeRate;
+
     @Column(name = "description", nullable = false, length = 255)
     private String description;
 
@@ -44,10 +58,23 @@ public class Expense {
     public Expense(ExpenseGroup group, User paidBy, BigDecimal amount, String description, LocalDate expenseDate) {
         this.group = group;
         this.paidBy = paidBy;
-        this.amount = amount;
         this.description = description;
         this.expenseDate = expenseDate;
         this.createdAt = Instant.now();
+        // Until told otherwise, the amount was entered in the group's own currency.
+        setConversion(amount, group.getBaseCurrency().name(), BigDecimal.ONE, amount);
+    }
+
+    /**
+     * #14 AC1: records what the member entered and its value in the group's base currency.
+     * {@code amount} is the converted value that balances and settlements are built from.
+     */
+    public void setConversion(BigDecimal originalAmount, String originalCurrency,
+                              BigDecimal exchangeRate, BigDecimal amount) {
+        this.originalAmount = originalAmount;
+        this.originalCurrency = originalCurrency;
+        this.exchangeRate = exchangeRate;
+        this.amount = amount;
     }
 
     public Long getId() { return id; }
@@ -56,6 +83,9 @@ public class Expense {
     public void setPaidBy(User paidBy) { this.paidBy = paidBy; }
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
+    public BigDecimal getOriginalAmount() { return originalAmount; }
+    public String getOriginalCurrency() { return originalCurrency; }
+    public BigDecimal getExchangeRate() { return exchangeRate; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
     public LocalDate getExpenseDate() { return expenseDate; }
