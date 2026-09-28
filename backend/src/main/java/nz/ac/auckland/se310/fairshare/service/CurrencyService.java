@@ -2,24 +2,24 @@ package nz.ac.auckland.se310.fairshare.service;
 
 import nz.ac.auckland.se310.fairshare.dto.CurrencyResponse;
 import nz.ac.auckland.se310.fairshare.exception.UnsupportedCurrencyException;
+import nz.ac.auckland.se310.fairshare.model.User;
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
 import java.util.Currency;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 @Service
 public class CurrencyService {
 
-    /**
-     * ISO 4217 codes an expense can be entered in. Every code here must also be quoted by the
-     * exchange rate provider, otherwise expenses in it can never be converted.
-     */
-    private static final Set<String> SUPPORTED_CODES = new TreeSet<>(Set.of(
-            "AUD", "BRL", "CAD", "CHF", "CNY", "DKK", "EUR", "GBP", "HKD", "IDR", "INR", "JPY",
-            "KRW", "MXN", "MYR", "NOK", "NZD", "PHP", "SEK", "SGD", "THB", "USD", "ZAR"));
+    // User.Currency is the one list of supported codes, so profiles, groups and expenses agree.
+    private static final Set<String> SUPPORTED_CODES = Arrays.stream(User.Currency.values())
+            .map(Enum::name)
+            .collect(Collectors.toCollection(TreeSet::new));
 
     private static final List<CurrencyResponse> SUPPORTED_CURRENCIES = SUPPORTED_CODES.stream()
             .map(code -> new CurrencyResponse(
