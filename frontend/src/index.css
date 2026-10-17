@@ -836,3 +836,30 @@ img {
         display: none;
     }
 }
+
+/* #84 AC5: on a phone every tappable element is at least 44x44px. Most buttons already are
+   (48px); these are the ones that fall short on desktop, where precise pointers make that fine. */
+@media (max-width: 767px) {
+    /* e.g. "Mark as paid", "Generate settlement plan", "Remove" on a member */
+    .button-small {
+        min-height: 44px;
+        padding: var(--space-2) var(--space-4);
+    }
+
+    /* Plain text links such as "Back to your groups", "Edit" and "View Detailed" get a
+       taller hit area without changing how they look. Tiles and pill links are already big. */
+    .card a:not(.button):not(.group-tile):not(.debt-row) {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+    }
+
+    /* Participant chips on the expense forms */
+    .select-participants label {
+        min-height: 44px;
+    }
+
+    .card .expense-delete-link {
+        min-height: 44px;
+    }
+}
