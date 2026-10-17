@@ -68,7 +68,9 @@ function CreateGroup() {
                     </button>
                 </form>
 
-                <Link to="/groups">Back to your groups</Link>
+                <p className="card-footer">
+                    <Link to="/groups">Back to your groups</Link>
+                </p>
             </div>
         </div>
     );

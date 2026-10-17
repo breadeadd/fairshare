@@ -665,3 +665,66 @@ form button[type="submit"] {
     width: auto;
     margin: -8px 0;
 }
+
+/* ---- #84: phones and narrow tablets ----
+   Below 768px every screen is a single column, and the page scrolls as a whole rather than
+   each card fitting the window with its own inner scroll, which is awkward to use by touch. */
+
+/* A backstop for AC4: nothing can make the whole page scroll sideways. clip, not hidden, so
+   the sticky header keeps working. */
+body {
+    overflow-x: clip;
+}
+
+img {
+    max-width: 100%;
+}
+
+@media (max-width: 767px) {
+    :root {
+        --page-padding: var(--space-4);
+    }
+
+    .page {
+        justify-content: flex-start;
+        padding: var(--page-padding);
+    }
+
+    .card {
+        max-height: none;
+        overflow-y: visible;
+        padding: var(--space-5) var(--space-4);
+        border-radius: var(--radius-input);
+    }
+
+    /* Lists grow with their content; the page scrolls instead. */
+    .group-list,
+    .member-list,
+    .expense-list,
+    .balance-list,
+    .settlement-list,
+    .debt-list,
+    .detailed-balance-list {
+        overflow-y: visible;
+    }
+
+    h1 {
+        font-size: 1.625rem;
+    }
+
+    .card-header {
+        margin-bottom: var(--space-5);
+    }
+
+    /* Fields that sit side by side on desktop stack, one per row (AC1). */
+    .form-row,
+    .form-row-amount,
+    .form-row-3,
+    .form-row-wide-start {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .panel {
+        padding: var(--space-4);
+    }
+}
