@@ -847,11 +847,20 @@ img {
     }
 
     /* Plain text links such as "Back to your groups", "Edit" and "View Detailed" get a
-       taller hit area without changing how they look. Tiles and pill links are already big. */
+       44x44 hit area without changing how they look; a short word like "Edit" is centred in
+       it. Tiles and pill links are already big. */
     .card a:not(.button):not(.group-tile):not(.debt-row) {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* The logo image's negative margin left its link only 40px tall. */
+    .logo {
+        min-height: 44px;
+        min-width: 44px;
     }
 
     /* Participant chips on the expense forms */
@@ -862,4 +871,15 @@ img {
     .card .expense-delete-link {
         min-height: 44px;
     }
+}
+
+/* #84 AC3: iOS Safari gives date inputs an intrinsic minimum width and centres their value,
+   so on a narrow form they can poke out past the other fields. */
+input[type="date"] {
+    min-width: 0;
+    min-height: 46px;
+}
+
+input[type="date"]::-webkit-date-and-time-value {
+    text-align: left;
 }
